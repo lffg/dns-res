@@ -1,4 +1,6 @@
 use bytes::BufMut;
+use color_eyre::Result;
+use tokio::net::UdpSocket;
 
 trait Serialize {
     fn serialize(&self, dst: &mut dyn BufMut);
@@ -102,8 +104,30 @@ impl Serialize for DnsQuery<'_> {
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() {
-    let _query = DnsQuery::new(1, b"google.com", Type::A);
+async fn main() -> Result<()> {
+    color_eyre::install().unwrap();
+    run().await
+}
+
+async fn run() -> Result<()> {
+    let socket = UdpSocket::bind(("0.0.0.0", 0)).await?;
+    socket.connect(("8.8.8.8", 53)).await?;
+
+    let query = DnsQuery::new(fastrand::u16(..), b"example.com", Type::A);
+
+    {
+        let mut buf = vec![];
+        query.serialize(&mut buf);
+        socket.send(&buf).await?;
+    }
+
+    {
+        let mut buf = vec![0; 1024];
+        let n = socket.recv(&mut buf).await?;
+        println!("got {n} bytes");
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
